@@ -29,7 +29,7 @@ int main(void) {
   /* Generate the HTTP response */
   printf("Connection: close\r\n");
   printf("Content-length: %d\r\n", (int)strlen(content));
-  printf("Content-type: text/html\r\n\r\n");
+  printf("Content-type: text/html\r\n\r\n"); /* 빈 줄 한 개가 헤더를 종료하고 있다. */
   printf("%s", content);
   fflush(stdout);
   
