@@ -13,8 +13,8 @@ int main(void) {
   if ((buf = getenv("QUERY_STRING")) != NULL) {
     p = strchr(buf, '&');
     *p = '\0';
-    strcpy(arg1, buf);
-    strcpy(arg2, p+1);
+    strcpy(arg1, p-1);
+    strcpy(arg2, p+3);
     n1 = atoi(arg1);
     n2 = atoi(arg2);
   }
