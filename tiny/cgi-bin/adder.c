@@ -30,8 +30,10 @@ int main(void) {
   printf("Connection: close\r\n");
   printf("Content-length: %d\r\n", (int)strlen(content));
   printf("Content-type: text/html\r\n\r\n"); /* 빈 줄 한 개가 헤더를 종료하고 있다. */
-  printf("%s", content);
-  fflush(stdout);
+  if(strcasecmp(getenv("REQUEST_METHOD"),"HEAD") != 0){ /* HEAD method는 content를 제외하고 header만 출력 */
+    printf("%s", content);
+    fflush(stdout);
+  }
   
   exit(0);
 }
