@@ -11,9 +11,9 @@
 void doit(int fd);
 void read_requesthdrs(rio_t *rp);
 int parse_uri(char *uri, char *filename, char *cgiargs);
-void serve_static(int fd, char *filename, int filesize);
+void serve_static(int fd, char *filename, int filesize, char* method);
 void get_filetype(char *filename, char *filetype);
-void serve_dynamic(int fd, char *filename, char *cgiargs);
+void serve_dynamic(int fd, char *filename, char *cgiargs, char* method);
 void clienterror(int fd, char *cause, char *errnum, char *shortmsg, char *longmsg);
 
 /*
@@ -63,7 +63,7 @@ void doit(int fd)
   printf("Request headers:\n");
   printf("%s", buf);
   sscanf(buf, "%s %s %s", method, uri, version); /* Request Header 첫 줄은 method, uri, version이 들어가며, sscanf는 이를 공백을 기준으로 구분하여 읽음(GET / HTTP/1.1)*/
-  if (strcasecmp(method, "GET")) {
+if (!strstr(method, "GET") && !strstr(method, "HEAD")) {
     clienterror(fd, method, "501", "Not implemented", "Tiny does not implement this method");
     return;
   }
@@ -82,14 +82,14 @@ void doit(int fd)
       clienterror(fd, filename, "403", "Forbidden", "Tiny couldn't read the file");
       return;
     }
-    serve_static(fd, filename, sbuf.st_size); /* response static file,  */
+    serve_static(fd, filename, sbuf.st_size, method); /* response static file,  */
   }
   else {  /* Serve dynamic content */
     if (!(S_ISREG(sbuf.st_mode)) || !(S_IXUSR & sbuf.st_mode)) { /* S_ISREG는 파일의 모드를 검색해 하당 파일이 일반 파일인지 여부를 확인하는 매크로, S_IRUSR & sbuf.st_mode는 파일 소유자(user)에 대한 실행 권한이 있는지 확인한다. */
       clienterror(fd, filename, "403", "Forbidden", "Tiny couldn't run the CGI program");
       return;
     }
-    serve_dynamic(fd, filename, cgiargs); /* response dynamic files, cgiargs는 parse_uri 함수에서 cgi 인자로 세팅함 */
+    serve_dynamic(fd, filename, cgiargs, method); /* response dynamic files, cgiargs는 parse_uri 함수에서 cgi 인자로 세팅함 */
   }
 }
 
@@ -166,7 +166,7 @@ int parse_uri(char *uri, char *filename, char *cgiargs)
 /*
 * serve_static: 정적인 파일을 클라이언트에게 제공합니다.
 */
-void serve_static(int fd, char *filename, int filesize)
+void serve_static(int fd, char *filename, int filesize, char* method)
 {
   int srcfd;
   char *srcp, filetype[MAXLINE], buf[MAXBUF];
@@ -181,6 +181,10 @@ void serve_static(int fd, char *filename, int filesize)
   Rio_writen(fd, buf, strlen(buf)); /*  클라이언트와 연결된 소켓인 fd를 통해 buf에 저장된 내용을 클라이언트에게 보내는 역할을 합니다. Rio_writen 함수는 데이터를 버퍼링 없이 소켓으로 직접 보내기 때문에 클라이언트는 이를 즉시 받게 됩니다. */
   printf("Response headers:\n");
   printf("%s", buf);
+
+  if(!strcasecmp(method, "HEAD")){ /* HEAD method는 content를 제외하고 header만 출력 */
+    return;
+  }
 
   /* Send response body to client */
   srcfd = Open(filename, O_RDONLY, 0); /* O_RDONLY 플래그를 사용하여 파일 디스크립터를 열면 해당 파일은 읽기 전용으로 열리며, 쓰기 작업은 허용되지 않습니다. */
@@ -212,7 +216,7 @@ void get_filetype(char *filename, char *filetype)
 /*
 * serve_dynamic: 동적인 콘텐츠를 제공하기 위해 CGI 프로그램을 실행합니다.
 */
-void serve_dynamic(int fd, char *filename, char *cgiargs)
+void serve_dynamic(int fd, char *filename, char *cgiargs, char* method)
 {
   char buf[MAXLINE], *emptylist[] = { NULL };
 
@@ -224,6 +228,7 @@ void serve_dynamic(int fd, char *filename, char *cgiargs)
 
   if (Fork() == 0) { /* Child, 현재 프로세스를 복제하여 자식 프로세스를 만들고, 그 자식 프로세스 내에서 실행되는 코드 블록이다. 이 코드 블록은 부모 프로세스와는 독립적으로 실행된다.  */
     setenv("QUERY_STRING", cgiargs, 1); /* Real server would set all CGI vars here */
+    setenv("REQUEST_METHOD", method, 1); /* Real server would set all CGI vars here */
     Dup2(fd, STDOUT_FILENO); /* Redirect stdout to client, 파일 디스크립터를 복제하는데 사용되는 시스템 호출이다. 여기서 fd는 파일 디스크립터이고, STDOUT_FILENO는 표준 출력의 파일 디스크립터를 나타냅니다. 파일 디스크립터 fd를 표준 출력에 복제합니다. 즉, 파일 디스크립터 fd가 현재 가리키는 파일과 표준 출력이 동일한 파일을 가리키게 됩니다. 이렇게 함으로써, 이후에 프로그램에서 표준 출력을 사용할 때 실제로는 파일 디스크립터 fd가 가리키는 파일로 출력됩니다. 일반적으로 이 시스템 호출은 프로세스 간 통신이나 입출력 리디렉션에 사용됩니다. 특히, 이 코드에서는 자식 프로세스의 표준 출력을 클라이언트 소켓으로 리디렉션합니다. 이렇게 하면 CGI 프로그램이 생성하는 출력이 클라이언트로 전송됩니다.*/
     Execve(filename, emptylist, environ); /* Run CGI program, Execve 함수를 호출하여 지정된 CGI 프로그램을 실행합니다. 이 함수는 새로운 프로그램을 현재 프로세스로 교체하여 실행합니다. 그리고 새로운 프로그램의 경로와 인자 배열, 환경 변수 배열을 새로운 프로그램이 선택적으로 받을 수 있습니다. */
   }
