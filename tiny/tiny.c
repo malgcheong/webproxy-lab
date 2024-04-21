@@ -184,10 +184,10 @@ void serve_static(int fd, char *filename, int filesize)
 
   /* Send response body to client */
   srcfd = Open(filename, O_RDONLY, 0); /* O_RDONLY 플래그를 사용하여 파일 디스크립터를 열면 해당 파일은 읽기 전용으로 열리며, 쓰기 작업은 허용되지 않습니다. */
-  srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0); /* 읽기 옵션으로 filename을 읽어서 메모리에 맵핑하고 그 시작 포인터 srcp를 반환합니다. PROT_READ가 읽기옵션이고 MAP_PRIVATE는 파일의 변경 사항이 메모리 매핑에 반영되지 않습니다.(복사본 만들때 유용) MAP_SHARED는 한 프로세스에서 파일의 데이터를 변경하면 해당 변경 사항이 다른 프로세스에서도 반영됩니다. */
+  srcp = Malloc(filesize); Rio_readn(srcfd, srcp, filesize); /* srcp = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, srcfd, 0); - 메모리 할당 받고 파일소켓을 읽어서 동적 메모리에 값을 넣는 것을 mmap을 사용하면 한번에 가능 */
   close(srcfd);
   Rio_writen(fd, srcp, filesize); /*  srcp 포인터가 가리키는 메모리 영역에 있는 데이터를 파일 디스크립터 fd로 지정된 소켓에 쓰게 됩니다. 이 경우 srcp는 메모리 매핑된 파일의 시작 지점을 가리키며, filesize 만큼의 데이터를 쓰게 됩니다. */
-  Munmap(srcp, filesize); /* 메모리 영역을 해제하고 해당 메모리 영역을 다시 사용할 수 있도록 함. srcp가 가리키는 메모리 영역을 filesize만큼 해제합니다. */
+  Free(srcp); /* Munmap(srcp, filesize); - 메모리 해제는 동일한 개념으로 해주면 됨 */
 }
 
 /* 
