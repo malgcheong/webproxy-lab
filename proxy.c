@@ -13,20 +13,14 @@ static const char *user_agent_hdr =
 void DupHeader(int connfd, char* buf, char *method, char *uri, char *version, char *host, char *port, char *path);
 void DeliverServerResponseToClient(int clientfd, int connfd, char* buf, char *method, char *uri, char *version, char *host, char *port, char *path);
 void parse_uri(char *uri, char *host, char *port, char *path);
+void* thread(void *vargp);
 
 int main(int argc,char **argv) {
 
-  int listenfd,   // lient의 요청을 accept하기 위한 listen 소켓
-      connfd,     // client의 요청을 accept한 연결 소켓
-      clientfd;   // server(tiny)와 통신하기 위한 연결 소켓
+  int listenfd,
+      *connfdp;
 
-  char buf[MAXLINE],        // 임시 저장 공간
-       method[MAXLINE],     // client(browser)가 요청한 method
-       uri[MAXLINE],        // client(browser)가 요청한 uri
-       version[MAXLINE],    // client(browser)가 요청한 http version
-       host[MAXLINE],       // server(tiny)의 host
-       port[MAXLINE],       // server(tiny)의 port
-       path[MAXLINE];       // server(tiny)의 파일 경로
+  pthread_t tid;
 
   socklen_t clientlen;
   struct sockaddr_storage clientaddr;
@@ -40,16 +34,35 @@ int main(int argc,char **argv) {
 
   while (1) {
     clientlen = sizeof(clientaddr);
-    connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);
-
-    /* 1. 클라이언트에서 받은 request header를 복사한다 */
-    DupHeader(connfd, buf, method, uri, version, host, port, path);
-    /* 2. 복사한 request header 정보를 가지고 서버한테 요청을 함 */
-    /* 3. 서버한테 받은 response data를 클라이언트에게 응답한다. */
-    DeliverServerResponseToClient(clientfd, connfd, buf, method, uri, version, host, port, path);
-                                                          
-    Close(connfd);       
+    connfdp = Malloc(sizeof(int));
+    *connfdp = Accept(listenfd, (SA *)&clientaddr, &clientlen);
+    Pthread_create(&tid, NULL, thread, connfdp);     
   }
+  return 0;
+}
+
+void* thread(void *vargp)
+{
+  int connfd,     // client의 요청을 accept한 연결 소켓
+      clientfd;   // server(tiny)와 통신하기 위한 연결 소켓
+
+  char buf[MAXLINE],        // 임시 저장 공간
+       method[MAXLINE],     // client(browser)가 요청한 method
+       uri[MAXLINE],        // client(browser)가 요청한 uri
+       version[MAXLINE],    // client(browser)가 요청한 http version
+       host[MAXLINE],       // server(tiny)의 host
+       port[MAXLINE],       // server(tiny)의 port
+       path[MAXLINE];       // server(tiny)의 파일 경로
+
+  connfd = *((int *)vargp);
+  Pthread_detach(pthread_self());
+  Free(vargp);
+  
+  DupHeader(connfd, buf, method, uri, version, host, port, path); /* 1. 클라이언트에서 받은 request header를 복사한다 */
+  DeliverServerResponseToClient(clientfd, connfd, buf, method, uri, version, host, port, path); /* 2. 복사한 request header 정보를 가지고 서버한테 요청을 하고 받은 response data를 클라이언트한테 전달함 */
+  
+  Close(connfd);
+  return NULL;
 }
 
 void DupHeader(int connfd, char* buf, char *method, char *uri, char *version, char *host, char *port, char *path)
@@ -68,6 +81,7 @@ void DupHeader(int connfd, char* buf, char *method, char *uri, char *version, ch
   printf("host: %s\n", host);
   printf("port: %s\n", port);
   printf("path: %s\n", path);
+  
 }
 
 void parse_uri(char *uri, char *host, char *port, char *path)
