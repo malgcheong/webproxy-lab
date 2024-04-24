@@ -15,7 +15,8 @@ typedef struct cache_object_t
   char path[MAXLINE];
   int content_length;
   char *content;
-  struct cache_object_t *prev, *next;
+  struct cache_object_t *prev;
+  struct cache_object_t *next;
 }cache_object_t;
 
 
@@ -78,7 +79,7 @@ void* thread(void *vargp)
   DupHeader(connfd, buf, method, uri, version, host, port, path); /* 1. 클라이언트에서 받은 request header를 복사한다 */
   DeliverServerResponseToClient(serverfd, connfd, buf, method, uri, version, host, port, path); /* 2. 복사한 request header 정보를 가지고 서버한테 요청을 하고 받은 response data를 클라이언트한테 전달함 */
   
-  Close(connfd);
+  // Close(connfd);
   return NULL;
 }
 
@@ -109,6 +110,8 @@ void parse_uri(char *uri, char *host, char *port, char *path)
     /* URI에 "http://"이 포함되어 있는 경우 해당 부분 삭제 */
     if (httpStart != NULL) {
         uri = httpStart + strlen("http://");
+    } else if(strstr(uri[0], "/") == 0) {
+      uri += 1;
     }
     char *portStart = strchr(uri, ':');
     char *pathStart = strchr(uri, '/');
@@ -130,6 +133,9 @@ void parse_uri(char *uri, char *host, char *port, char *path)
       strcpy(port, "80"); // port
       strcpy(path, "/"); // path
     }
+
+    if (strstr(path, "http://") > 0) 
+      strcat("http://",path); // http://가 없을시 http://를 추가함
 }
 
 void DeliverServerResponseToClient(int serverfd, int connfd, char* buf, char *method, char *uri, char *version, char *host, char *port, char *path)
@@ -257,7 +263,9 @@ void read_cache(cache_object_t *cache_object)
 
   // 2️⃣ 현재 노드를 root로 변경
   cache_object->next = rootp; // root였던 노드는 현재 노드의 다음 노드가 됨
+  rootp -> prev = cache_object;
   rootp = cache_object;
+  rootp ->prev = NULL;
 }
 
 void save_cache(cache_object_t *cache_object)
